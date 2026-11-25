@@ -616,6 +616,15 @@ AddScore:
     mov ax,[bp+4]
     add [score_low],ax
     adc word [score_high],0
+    cmp word [score_high],0x000f
+    jb addscore_done
+    ja addscore_clamp
+    cmp word [score_low],0x423f
+    jbe addscore_done
+addscore_clamp:
+    mov word [score_high],0x000f
+    mov word [score_low],0x423f
+addscore_done:
     pop ax
     pop bp
     ret 2
@@ -673,6 +682,42 @@ drawtitle_exit:
     push ax
     call DemoRect
 drawtitle_show:
+    mov ax,14
+    push ax
+    mov ax,menu_title
+    push ax
+    mov ax,24
+    push ax
+    mov ax,106
+    push ax
+    call MenuText
+    mov ax,15
+    push ax
+    mov ax,menu_start
+    push ax
+    mov ax,71
+    push ax
+    mov ax,130
+    push ax
+    call MenuText
+    mov ax,15
+    push ax
+    mov ax,menu_exit
+    push ax
+    mov ax,121
+    push ax
+    mov ax,148
+    push ax
+    call MenuText
+    mov ax,7
+    push ax
+    mov ax,menu_help
+    push ax
+    mov ax,165
+    push ax
+    mov ax,85
+    push ax
+    call MenuText
     call PresentBuffer
     pop ax
     ret
@@ -689,6 +734,24 @@ DrawPause:
     mov ax,90
     push ax
     call DemoRect
+    mov ax,0
+    push ax
+    mov ax,menu_pause
+    push ax
+    mov ax,93
+    push ax
+    mov ax,142
+    push ax
+    call MenuText
+    mov ax,0
+    push ax
+    mov ax,menu_resume
+    push ax
+    mov ax,106
+    push ax
+    mov ax,127
+    push ax
+    call MenuText
     call PresentBuffer
     pop ax
     ret
@@ -697,15 +760,172 @@ DrawLifeLost:
     mov ax,4
     push ax
     call ClearBuffer
+    mov ax,15
+    push ax
+    mov ax,menu_world
+    push ax
+    mov ax,65
+    push ax
+    mov ax,133
+    push ax
+    call MenuText
+    mov ax,15
+    push ax
+    mov ax,menu_lives
+    push ax
+    mov ax,94
+    push ax
+    mov ax,112
+    push ax
+    call MenuText
+    mov ax,menu_lives_digits
+    push ax
+    xor ax,ax
+    mov al,[lives]
+    push ax
+    call MenuNumber
+    mov ax,15
+    push ax
+    mov ax,menu_lives_digits
+    push ax
+    mov ax,94
+    push ax
+    mov ax,184
+    push ax
+    call MenuText
     call PresentBuffer
     pop ax
     ret
 DrawComplete:
     push ax
+    push bx
+    push cx
+    push dx
+    push di
     mov ax,2
     push ax
     call ClearBuffer
+    mov ax,14
+    push ax
+    mov ax,menu_complete
+    push ax
+    mov ax,35
+    push ax
+    mov ax,118
+    push ax
+    call MenuText
+    mov ax,15
+    push ax
+    mov ax,menu_score_label
+    push ax
+    mov ax,65
+    push ax
+    mov ax,100
+    push ax
+    call MenuText
+    call MenuScore
+    mov ax,15
+    push ax
+    mov ax,menu_score_digits
+    push ax
+    mov ax,65
+    push ax
+    mov ax,154
+    push ax
+    call MenuText
+    mov ax,15
+    push ax
+    mov ax,menu_coins
+    push ax
+    mov ax,85
+    push ax
+    mov ax,100
+    push ax
+    call MenuText
+    mov ax,menu_coins_digits
+    push ax
+    xor ax,ax
+    mov al,[coins]
+    push ax
+    call MenuNumber
+    mov ax,15
+    push ax
+    mov ax,menu_coins_digits
+    push ax
+    mov ax,85
+    push ax
+    mov ax,154
+    push ax
+    call MenuText
+    mov ax,15
+    push ax
+    mov ax,menu_time
+    push ax
+    mov ax,105
+    push ax
+    mov ax,100
+    push ax
+    call MenuText
+    mov ax,menu_time_digits
+    push ax
+    xor ax,ax
+    mov ax,[time_left]
+    push ax
+    call MenuNumber
+    mov ax,15
+    push ax
+    mov ax,menu_time_digits
+    push ax
+    mov ax,105
+    push ax
+    mov ax,166
+    push ax
+    call MenuText
+    mov ax,15
+    push ax
+    mov ax,menu_bonus
+    push ax
+    mov ax,125
+    push ax
+    mov ax,100
+    push ax
+    call MenuText
+    mov ax,[time_left]
+    mov bx,50
+    mul bx
+    mov di,menu_bonus_digits+4
+    mov bx,10
+    mov cx,5
+menubonus_loop:
+    xor dx,dx
+    div bx
+    add dl,48
+    mov [di],dl
+    dec di
+    loop menubonus_loop
+    mov ax,15
+    push ax
+    mov ax,menu_bonus_digits
+    push ax
+    mov ax,125
+    push ax
+    mov ax,172
+    push ax
+    call MenuText
+    mov ax,15
+    push ax
+    mov ax,menu_continue
+    push ax
+    mov ax,165
+    push ax
+    mov ax,115
+    push ax
+    call MenuText
     call PresentBuffer
+    pop di
+    pop dx
+    pop cx
+    pop bx
     pop ax
     ret
 DrawGameOver:
@@ -724,6 +944,43 @@ DrawGameOver:
     mov ax,40
     push ax
     call DemoRect
+    mov ax,12
+    push ax
+    mov ax,menu_over
+    push ax
+    mov ax,60
+    push ax
+    mov ax,133
+    push ax
+    call MenuText
+    mov ax,15
+    push ax
+    mov ax,menu_final
+    push ax
+    mov ax,95
+    push ax
+    mov ax,100
+    push ax
+    call MenuText
+    call MenuScore
+    mov ax,15
+    push ax
+    mov ax,menu_score_digits
+    push ax
+    mov ax,95
+    push ax
+    mov ax,178
+    push ax
+    call MenuText
+    mov ax,15
+    push ax
+    mov ax,menu_return
+    push ax
+    mov ax,150
+    push ax
+    mov ax,115
+    push ax
+    call MenuText
     call PresentBuffer
     pop ax
     ret
@@ -734,6 +991,139 @@ DrawWinWorld:
     call ClearBuffer
     call DrawMap
     call PresentBuffer
+    pop ax
+    ret
+
+; MenuText(x,y,address,colour): draw zero-terminated uppercase text into buffer.
+; Inputs: four stack words. Outputs: none. Preserves all registers.
+MenuText:
+    push bp
+    mov bp,sp
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+    push es
+    mov es,[framebuffer_seg]
+    mov ax,[bp+6]
+    mov bx,320
+    mul bx
+    add ax,[bp+4]
+    mov di,ax
+    mov si,[bp+8]
+menutext_char:
+    mov al,[si]
+    cmp al,0
+    je menutext_done
+    inc si
+    cmp al,32
+    jb menutext_skip
+    cmp al,90
+    ja menutext_skip
+    sub al,32
+    xor ah,ah
+    mov bx,7
+    mul bx
+    mov bx,ax
+    add bx,menu_font
+    push di
+    mov cx,7
+menutext_row:
+    push cx
+    mov dl,[bx]
+    mov dh,0x10
+    mov cx,5
+menutext_pixel:
+    test dl,dh
+    jz menutext_blank
+    mov al,[bp+10]
+    mov [es:di],al
+menutext_blank:
+    inc di
+    shr dh,1
+    loop menutext_pixel
+    add di,315
+    inc bx
+    pop cx
+    loop menutext_row
+    pop di
+menutext_skip:
+    add di,6
+    jmp menutext_char
+menutext_done:
+    pop es
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    pop bp
+    ret 8
+
+; MenuNumber(value,address): write unsigned word as three decimal digits.
+; Inputs: two stack words. Outputs: destination string. Preserves registers.
+MenuNumber:
+    push bp
+    mov bp,sp
+    push ax
+    push bx
+    push cx
+    push dx
+    push di
+    mov ax,[bp+4]
+    mov di,[bp+6]
+    add di,2
+    mov bx,10
+    mov cx,3
+menunumber_loop:
+    xor dx,dx
+    div bx
+    add dl,48
+    mov [di],dl
+    dec di
+    loop menunumber_loop
+    pop di
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    pop bp
+    ret 4
+
+; MenuScore: convert two-word score to six decimal digits using word division.
+; Inputs: shared score. Output: menu_score_digits. Preserves registers.
+MenuScore:
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+    mov si,[score_high]
+    mov ax,[score_low]
+    mov di,menu_score_digits+5
+    mov bx,10
+    mov cx,6
+menuscore_loop:
+    push ax
+    mov ax,si
+    xor dx,dx
+    div bx
+    mov si,ax
+    pop ax
+    div bx
+    add dl,48
+    mov [di],dl
+    dec di
+    loop menuscore_loop
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
     pop ax
     ret
 
@@ -810,6 +1200,91 @@ previous_keys: times 128 db 0
 ; Snapshot read by gameplay; updated once per frame.
 keys_held: times 128 db 0
 game_state: db title
+
+
+; Menu text and bitmap data.
+menu_title: db 'SUPER MARIO ENGINE',0
+menu_start: db 'START GAME',0
+menu_exit: db 'EXIT',0
+menu_help: db 'UP DOWN - ENTER TO SELECT',0
+menu_pause: db 'PAUSED',0
+menu_resume: db 'P TO RESUME',0
+menu_world: db 'WORLD 1-1',0
+menu_lives: db 'LIVES LEFT:',0
+menu_complete: db 'LEVEL COMPLETE',0
+menu_score_label: db 'SCORE:',0
+menu_coins: db 'COINS:',0
+menu_time: db 'TIME LEFT:',0
+menu_bonus: db 'TIME BONUS:',0
+menu_continue: db 'ENTER TO RETURN',0
+menu_over: db 'GAME OVER',0
+menu_final: db 'FINAL SCORE:',0
+menu_return: db 'ENTER TO RETURN',0
+menu_lives_digits: db '000',0
+menu_coins_digits: db '000',0
+menu_time_digits: db '000',0
+menu_score_digits: db '000000',0
+menu_bonus_digits: db '00000',0
+menu_font:
+    db 0,0,0,0,0,0,0 ; ASCII 32
+    db 0,0,0,0,0,0,0 ; ASCII 33
+    db 0,0,0,0,0,0,0 ; ASCII 34
+    db 0,0,0,0,0,0,0 ; ASCII 35
+    db 0,0,0,0,0,0,0 ; ASCII 36
+    db 0,0,0,0,0,0,0 ; ASCII 37
+    db 0,0,0,0,0,0,0 ; ASCII 38
+    db 0,0,0,0,0,0,0 ; ASCII 39
+    db 0,0,0,0,0,0,0 ; ASCII 40
+    db 0,0,0,0,0,0,0 ; ASCII 41
+    db 0,0,0,0,0,0,0 ; ASCII 42
+    db 0,0,0,0,0,0,0 ; ASCII 43
+    db 0,0,0,0,0,0,0 ; ASCII 44
+    db 0,0,0,31,0,0,0 ; ASCII 45
+    db 0,0,0,0,0,0,0 ; ASCII 46
+    db 0,0,0,0,0,0,0 ; ASCII 47
+    db 14,17,19,21,25,17,14 ; ASCII 48
+    db 4,12,4,4,4,4,14 ; ASCII 49
+    db 14,17,1,2,4,8,31 ; ASCII 50
+    db 30,1,1,14,1,1,30 ; ASCII 51
+    db 2,6,10,18,31,2,2 ; ASCII 52
+    db 31,16,16,30,1,1,30 ; ASCII 53
+    db 14,16,16,30,17,17,14 ; ASCII 54
+    db 31,1,2,4,8,8,8 ; ASCII 55
+    db 14,17,17,14,17,17,14 ; ASCII 56
+    db 14,17,17,15,1,1,14 ; ASCII 57
+    db 0,4,4,0,4,4,0 ; ASCII 58
+    db 0,0,0,0,0,0,0 ; ASCII 59
+    db 0,0,0,0,0,0,0 ; ASCII 60
+    db 0,0,0,0,0,0,0 ; ASCII 61
+    db 0,0,0,0,0,0,0 ; ASCII 62
+    db 0,0,0,0,0,0,0 ; ASCII 63
+    db 0,0,0,0,0,0,0 ; ASCII 64
+    db 14,17,17,31,17,17,17 ; ASCII 65
+    db 30,17,17,30,17,17,30 ; ASCII 66
+    db 15,16,16,16,16,16,15 ; ASCII 67
+    db 30,17,17,17,17,17,30 ; ASCII 68
+    db 31,16,16,30,16,16,31 ; ASCII 69
+    db 31,16,16,30,16,16,16 ; ASCII 70
+    db 15,16,16,23,17,17,15 ; ASCII 71
+    db 17,17,17,31,17,17,17 ; ASCII 72
+    db 31,4,4,4,4,4,31 ; ASCII 73
+    db 7,2,2,2,18,18,12 ; ASCII 74
+    db 17,18,20,24,20,18,17 ; ASCII 75
+    db 16,16,16,16,16,16,31 ; ASCII 76
+    db 17,27,21,21,17,17,17 ; ASCII 77
+    db 17,25,21,19,17,17,17 ; ASCII 78
+    db 14,17,17,17,17,17,14 ; ASCII 79
+    db 30,17,17,30,16,16,16 ; ASCII 80
+    db 14,17,17,17,21,18,13 ; ASCII 81
+    db 30,17,17,30,20,18,17 ; ASCII 82
+    db 15,16,16,14,1,1,30 ; ASCII 83
+    db 31,4,4,4,4,4,4 ; ASCII 84
+    db 17,17,17,17,17,17,14 ; ASCII 85
+    db 17,17,17,17,17,10,4 ; ASCII 86
+    db 17,17,17,21,21,27,17 ; ASCII 87
+    db 17,17,10,4,10,17,17 ; ASCII 88
+    db 17,17,10,4,4,4,4 ; ASCII 89
+    db 31,1,2,4,8,16,31 ; ASCII 90
 
 ; Private stack, retained when DOS memory is resized.
 times 2048 db 0
