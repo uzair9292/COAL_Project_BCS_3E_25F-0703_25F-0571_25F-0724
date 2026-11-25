@@ -37,6 +37,7 @@ last_tick: dw 0
 elapsed_ticks: dw 1
 bios_fraction: dw 0
 clock_fraction: dw 0
+clock_high: dw 0
 state_frames: dw 0
 menu_choice: db 0
 state_table: dw TitleState,PlayingState,PausedState,DyingState
@@ -273,6 +274,7 @@ ResetLevel:
     mov word [flag_points],0
     mov word [time_left],300
     mov word [clock_fraction],0
+    mov word [clock_high],0
     call ResetMap
     call ResetEntities
     ret
@@ -284,22 +286,33 @@ NewGame:
     mov byte [lives],3
     call ResetLevel
     ret
-; TickClock: update countdown from elapsed hardware ticks.
+; TickClock: procedure entry.
 TickClock:
     push ax
+    push dx
+    ; Each IRQ represents 39773 PIT input cycles. One second is 1193182 cycles.
     mov ax,[elapsed_ticks]
+    mov dx,39773
+    mul dx
     add [clock_fraction],ax
-newgame_next:
-    cmp word [clock_fraction],fps
-    jb newgame_done
-    sub word [clock_fraction],fps
+    adc [clock_high],dx
+clock_next:
+    cmp word [clock_high],0x12
+    jb clock_done
+    ja clock_second
+    cmp word [clock_fraction],0x34de
+    jb clock_done
+clock_second:
+    sub word [clock_fraction],0x34de
+    sbb word [clock_high],0x12
     cmp word [time_left],0
-    je newgame_dead
+    je clock_dead
     dec word [time_left]
-    jnz newgame_next
-newgame_dead:
+    jnz clock_next
+clock_dead:
     mov byte [death_request],1
-newgame_done:
+clock_done:
+    pop dx
     pop ax
     ret
 ; DrawFrame: render shared world and HUD then present it.
@@ -352,7 +365,14 @@ PlayingState:
     call TickClock
     cmp word [invuln_timer],0
     je playingstate_events
-    dec word [invuln_timer]
+    push ax
+    mov ax,[elapsed_ticks]
+    cmp [invuln_timer],ax
+    ja playingstate_invuln_sub
+    mov ax,[invuln_timer]
+playingstate_invuln_sub:
+    sub [invuln_timer],ax
+    pop ax
 playingstate_events:
     cmp byte [death_request],0
     jne playingstate_die
@@ -369,11 +389,12 @@ playingstate_pause:
     ret
 playingstate_die:
     mov word [state_frames],0
-    mov word [velocity_y],-0x500
+    mov word [velocity_y],-0x580
     cmp byte [death_request],2
     jne playingstate_dying
     mov word [velocity_y],0x400
 playingstate_dying:
+    mov word [invuln_timer],0
     mov byte [game_state],dying
     ret
 playingstate_win:
@@ -396,20 +417,33 @@ pausedstate_title:
 pausedstate_draw:
     call DrawPause
     ret
-; DyingState: move hero with gravity, no collision; decrement life once.
+; DyingState: procedure entry.
 DyingState:
     push ax
     push dx
+    push cx
+    mov cx,[elapsed_ticks]
+dyingstate_step:
     mov ax,[velocity_y]
     cwd
     add [mario_y],ax
     adc [mario_y+2],dx
-    add word [velocity_y],0x40
-    mov byte [pose],2
-    call DrawFrame
+    ; A stronger falling acceleration gets the hero off screen in 45 ticks.
+    cmp word [velocity_y],0
+    jge dyingstate_fall
+    add word [velocity_y],0x50
+    jmp dyingstate_count
+dyingstate_fall:
+    add word [velocity_y],0xc0
+dyingstate_count:
     inc word [state_frames]
     cmp word [state_frames],45
-    jb dyingstate_done
+    jae dyingstate_finish
+    loop dyingstate_step
+    mov byte [pose],2
+    call DrawFrame
+    jmp dyingstate_done
+dyingstate_finish:
     dec byte [lives]
     mov word [state_frames],0
     mov byte [game_state],life_lost
@@ -417,40 +451,66 @@ DyingState:
     jne dyingstate_done
     mov byte [game_state],game_over
 dyingstate_done:
+    pop cx
     pop dx
     pop ax
     ret
 ; LifeLostState: show lives screen for two seconds, reset level.
 LifeLostState:
     call DrawLifeLost
-    inc word [state_frames]
+    push ax
+    mov ax,[elapsed_ticks]
+    add [state_frames],ax
+    pop ax
     cmp word [state_frames],60
     jb lifeloststate_done
     call ResetLevel
     mov byte [game_state],playing
 lifeloststate_done:
     ret
-; WinState: slide down, then hide hero; add time bonus once.
+; WinState: procedure entry.
 WinState:
     push ax
     push dx
+    push cx
+    mov cx,[elapsed_ticks]
+winstate_step:
     inc word [state_frames]
     cmp word [state_frames],30
-    ja winstate_walk
+    ja winstate_count
+    ; Ground top is 160. Super Mario is 32 pixels tall.
+    mov ax,0x9000
+    cmp byte [hp],2
+    jne winstate_target
+    mov ax,0x8000
+winstate_target:
     cmp word [mario_y+2],0
-    jne winstate_slide
-    cmp word [mario_y],0x9000
-    jae winstate_draw
+    jl winstate_slide
+    jg winstate_clamp
+    cmp [mario_y],ax
+    jae winstate_clamp
 winstate_slide:
     add word [mario_y],0x400
     adc word [mario_y+2],0
-winstate_draw:
+    cmp word [mario_y+2],0
+    jl winstate_count
+    cmp [mario_y],ax
+    jb winstate_count
+winstate_clamp:
+    mov [mario_y],ax
+    mov word [mario_y+2],0
+winstate_count:
+    cmp word [state_frames],60
+    jae winstate_bonus
+    loop winstate_step
+    cmp word [state_frames],30
+    ja winstate_hide
     call DrawFrame
     jmp winstate_done
-winstate_walk:
+winstate_hide:
     call DrawWinWorld
-    cmp word [state_frames],60
-    jb winstate_done
+    jmp winstate_done
+winstate_bonus:
     mov ax,[time_left]
     mov dx,50
     mul dx
@@ -458,6 +518,7 @@ winstate_walk:
     call AddScore
     mov byte [game_state],level_complete
 winstate_done:
+    pop cx
     pop dx
     pop ax
     ret
@@ -495,6 +556,30 @@ UpdateCamera:
 DrawEntities:
     ret
 DrawHUD:
+    push ax
+    mov ax,menu_time_digits
+    push ax
+    push word [time_left]
+    call MenuNumber
+    mov ax,15
+    push ax
+    mov ax,demo_time_label
+    push ax
+    mov ax,4
+    push ax
+    mov ax,252
+    push ax
+    call MenuText
+    mov ax,15
+    push ax
+    mov ax,menu_time_digits
+    push ax
+    mov ax,4
+    push ax
+    mov ax,282
+    push ax
+    call MenuText
+    pop ax
     ret
 ; DemoRect(x,y,w,h,colour), all coordinates in bounds.
 DemoRect:
@@ -542,6 +627,17 @@ DrawMap:
     mov ax,160
     push ax
     mov ax,0
+    push ax
+    call DemoRect
+    mov ax,15
+    push ax
+    mov ax,128
+    push ax
+    mov ax,2
+    push ax
+    mov ax,32
+    push ax
+    mov ax,288
     push ax
     call DemoRect
     pop ax
@@ -602,10 +698,27 @@ updateplayer_events:
     je updateplayer_win
     mov byte [death_request],1
 updateplayer_win:
+    ; T sets five seconds remaining; F simulates a pit death.
+    cmp byte [keys_pressed+0x14],0
+    je updateplayer_pit
+    mov word [time_left],5
+    mov word [clock_fraction],0
+    mov word [clock_high],0
+updateplayer_pit:
+    cmp byte [keys_pressed+0x21],0
+    je updateplayer_flag
+    mov byte [death_request],2
+    mov word [mario_y],0xc000
+    mov word [mario_y+2],0
+updateplayer_flag:
     cmp byte [keys_pressed+0x11],0 ; W: simulated win
     je updateplayer_done
     mov byte [win_request],1
-    mov word [flag_points],100
+    mov word [flag_points],5000
+    mov word [mario_x],0x2000
+    mov word [mario_x+2],1
+    mov word [mario_y],0x2000
+    mov word [mario_y+2],0
 updateplayer_done:
     pop ax
     ret
@@ -990,6 +1103,8 @@ DrawWinWorld:
     push ax
     call ClearBuffer
     call DrawMap
+    call DrawEntities
+    call DrawHUD
     call PresentBuffer
     pop ax
     ret
@@ -1203,6 +1318,7 @@ game_state: db title
 
 
 ; Menu text and bitmap data.
+demo_time_label: db 'TIME',0
 menu_title: db 'SUPER MARIO ENGINE',0
 menu_start: db 'START GAME',0
 menu_exit: db 'EXIT',0
